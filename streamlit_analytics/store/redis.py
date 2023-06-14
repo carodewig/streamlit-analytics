@@ -3,8 +3,7 @@ import redis
 
 def load(counts, redis_url, collection_name):
     """Load count data from redis into `counts`."""
-    redis = redis.Redis.from_url(redis_url)
-    result = redis.hgetall(collection_name)
+    result = redis.Redis.from_url(redis_url).hgetall(collection_name)
     if result:
         redis_counts = {k.decode("utf-8"): v.decode("utf-8") for k, v in result.items()}
 
@@ -16,5 +15,4 @@ def load(counts, redis_url, collection_name):
 
 def save(counts, redis_url, collection_name):
     """Save count data from `counts` to redis."""
-    redis = redis.Redis.from_url(redis_url)
-    redis.hset(collection_name, mapping=counts)
+    redis.Redis.from_url(redis_url).hset(collection_name, mapping=counts)
