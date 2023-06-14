@@ -301,7 +301,7 @@ def start_tracking(
         st.session_state.state_dict = {}
     if "last_time" not in st.session_state:
         st.session_state.last_time = datetime.datetime.now()
-    _track_user()
+    _track_user(page)
 
     # Monkey-patch streamlit to call the wrappers above.
     st.button = _wrap_button(_orig_button, page=page)
