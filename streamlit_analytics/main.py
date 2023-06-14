@@ -16,7 +16,7 @@ from .utils import replace_empty
 
 # Dict that holds all analytics results. Note that this is persistent across users,
 # as modules are only imported once by a streamlit app.
-counts = {"loaded_from_firestore": False}
+counts = {"loaded_from_firestore": False, "loaded_from_redis": False}
 
 
 def reset_counts():
