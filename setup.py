@@ -31,6 +31,7 @@ setup(
         "pandas",
         "altair",
         "google-cloud-firestore",
+        "redis",
     ],
     classifiers=[
         "Programming Language :: Python :: 3",

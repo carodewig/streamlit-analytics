@@ -10,7 +10,8 @@ from typing import Union
 
 import streamlit as st
 
-from . import display, firestore
+from . import display
+from .store import firestore, redis
 from .utils import replace_empty
 
 # Dict that holds all analytics results. Note that this is persistent across users,
@@ -230,6 +231,8 @@ def start_tracking(
     verbose: bool = False,
     firestore_key_file: str = None,
     firestore_collection_name: str = "counts",
+    redis_url: str = None,
+    redis_collection_name: str = "counts",
     load_from_json: Union[str, Path] = None,
 ):
     """
@@ -246,6 +249,14 @@ def start_tracking(
         counts["loaded_from_firestore"] = True
         if verbose:
             print("Loaded count data from firestore:")
+            print(counts)
+            print()
+
+    if redis_url and not counts["loaded_from_redis"]:
+        redis.load(counts, redis_url, redis_collection_name)
+        counts["loaded_from_redis"] = True
+        if verbose:
+            print("Loaded count data from redis:")
             print(counts)
             print()
 
@@ -333,6 +344,8 @@ def stop_tracking(
     save_to_json: Union[str, Path] = None,
     firestore_key_file: str = None,
     firestore_collection_name: str = "counts",
+    redis_url: str = None,
+    redis_collection_name: str = "counts",
     verbose: bool = False,
 ):
     """
@@ -390,6 +403,13 @@ def stop_tracking(
             print()
         firestore.save(counts, firestore_key_file, firestore_collection_name)
 
+    if redis_url:
+        if verbose:
+            print("Saving count data to redis")
+            print(counts)
+            print()
+        redis.save(counts, redis_url, redis_collection_name)
+
     # Dump the counts to json file if `save_to_json` is set.
     # TODO: Make sure this is not locked if writing from multiple threads.
     if save_to_json is not None:
@@ -411,6 +431,8 @@ def track(
     save_to_json: Union[str, Path] = None,
     firestore_key_file: str = None,
     firestore_collection_name: str = "counts",
+    redis_url: str = None,
+    redis_collection_name: str = "counts",
     verbose=False,
     load_from_json: Union[str, Path] = None,
 ):
@@ -426,6 +448,8 @@ def track(
         verbose=verbose,
         firestore_key_file=firestore_key_file,
         firestore_collection_name=firestore_collection_name,
+        redis_url=redis_url,
+        redis_collection_name=redis_collection_name,
         load_from_json=load_from_json,
     )
 
@@ -437,5 +461,7 @@ def track(
         save_to_json=save_to_json,
         firestore_key_file=firestore_key_file,
         firestore_collection_name=firestore_collection_name,
+        redis_url=redis_url,
+        redis_collection_name=redis_collection_name,
         verbose=verbose,
     )

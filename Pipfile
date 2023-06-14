@@ -8,7 +8,7 @@ streamlit = "*"
 altair = "*"
 pandas = "*"
 google-cloud-firestore = "*"
-streamlit-analytics = {editable = true, path = "."}
+redis = "*"
 
 [dev-packages]
 black = "*"
@@ -16,3 +16,10 @@ black = "*"
 [requires]
 python_version = "3.8"
 
+[packages.streamlit-analytics]
+editable = true
+path = "."
+
+[packages.e1839a8]
+path = "."
+editable = true
