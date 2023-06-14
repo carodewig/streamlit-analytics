@@ -19,18 +19,18 @@ from .utils import replace_empty
 counts = {"loaded_from_firestore": False, "loaded_from_redis": False}
 
 
-def reset_counts():
+def reset_counts(c):
     # Use yesterday as first entry to make chart look better.
     yesterday = str(datetime.date.today() - datetime.timedelta(days=1))
-    counts["total_pageviews"] = 0
-    counts["total_script_runs"] = 0
-    counts["total_time_seconds"] = 0
-    counts["per_day"] = {"days": [str(yesterday)], "pageviews": [0], "script_runs": [0]}
-    counts["widgets"] = {}
-    counts["start_time"] = datetime.datetime.now().strftime("%d %b %Y, %H:%M:%S")
+    c["total_pageviews"] = 0
+    c["total_script_runs"] = 0
+    c["total_time_seconds"] = 0
+    c["per_day"] = {"days": [str(yesterday)], "pageviews": [0], "script_runs": [0]}
+    c["widgets"] = {}
+    c["start_time"] = datetime.datetime.now().strftime("%d %b %Y, %H:%M:%S")
 
 
-reset_counts()
+reset_counts(counts)
 
 # Store original streamlit functions. They will be monkey-patched with some wrappers
 # in `start_tracking` (see wrapper functions below).
@@ -65,134 +65,140 @@ _orig_sidebar_file_uploader = st.sidebar.file_uploader
 _orig_sidebar_color_picker = st.sidebar.color_picker
 
 
-def _track_user():
+def _track_user(page=None):
+    c = counts[page] if page is not None else counts
     """Track individual pageviews by storing user id to session state."""
     today = str(datetime.date.today())
-    if counts["per_day"]["days"][-1] != today:
+    if c["per_day"]["days"][-1] != today:
         # TODO: Insert 0 for all days between today and last entry.
-        counts["per_day"]["days"].append(today)
-        counts["per_day"]["pageviews"].append(0)
-        counts["per_day"]["script_runs"].append(0)
-    counts["total_script_runs"] += 1
-    counts["per_day"]["script_runs"][-1] += 1
+        c["per_day"]["days"].append(today)
+        c["per_day"]["pageviews"].append(0)
+        c["per_day"]["script_runs"].append(0)
+    c["total_script_runs"] += 1
+    c["per_day"]["script_runs"][-1] += 1
     now = datetime.datetime.now()
-    counts["total_time_seconds"] += (now - st.session_state.last_time).total_seconds()
+    c["total_time_seconds"] += (now - st.session_state.last_time).total_seconds()
     st.session_state.last_time = now
     if not st.session_state.user_tracked:
         st.session_state.user_tracked = True
-        counts["total_pageviews"] += 1
-        counts["per_day"]["pageviews"][-1] += 1
+        c["total_pageviews"] += 1
+        c["per_day"]["pageviews"][-1] += 1
         # print("Tracked new user")
 
 
-def _wrap_checkbox(func):
+def _wrap_checkbox(func, page=None):
     """
     Wrap st.checkbox.
     """
 
     def new_func(label, *args, **kwargs):
+        c = counts[page] if page is not None else counts
         checked = func(label, *args, **kwargs)
         label = replace_empty(label)
-        if label not in counts["widgets"]:
-            counts["widgets"][label] = 0
+        if label not in c["widgets"]:
+            c["widgets"][label] = 0
         if checked != st.session_state.state_dict.get(label, None):
-            counts["widgets"][label] += 1
+            c["widgets"][label] += 1
         st.session_state.state_dict[label] = checked
         return checked
 
     return new_func
 
 
-def _wrap_button(func):
+def _wrap_button(func, page=None):
     """
     Wrap st.button.
     """
 
     def new_func(label, *args, **kwargs):
+        c = counts[page] if page is not None else counts
         clicked = func(label, *args, **kwargs)
         label = replace_empty(label)
-        if label not in counts["widgets"]:
-            counts["widgets"][label] = 0
+        if label not in c["widgets"]:
+            c["widgets"][label] = 0
         if clicked:
-            counts["widgets"][label] += 1
+            c["widgets"][label] += 1
         st.session_state.state_dict[label] = clicked
         return clicked
 
     return new_func
 
 
-def _wrap_file_uploader(func):
+def _wrap_file_uploader(func, page=None):
     """
     Wrap st.file_uploader.
     """
 
     def new_func(label, *args, **kwargs):
+        c = counts[page] if page is not None else counts
         uploaded_file = func(label, *args, **kwargs)
         label = replace_empty(label)
-        if label not in counts["widgets"]:
-            counts["widgets"][label] = 0
+        if label not in c["widgets"]:
+            c["widgets"][label] = 0
         # TODO: Right now this doesn't track when multiple files are uploaded one after
         #   another. Maybe compare files directly (but probably not very clever to
         #   store in session state) or hash them somehow and check if a different file
         #   was uploaded.
         if uploaded_file and not st.session_state.state_dict.get(label, None):
-            counts["widgets"][label] += 1
+            c["widgets"][label] += 1
         st.session_state.state_dict[label] = bool(uploaded_file)
         return uploaded_file
 
     return new_func
 
 
-def _wrap_select(func):
+def _wrap_select(func, page=None):
     """
     Wrap a streamlit function that returns one selected element out of multiple options,
     e.g. st.radio, st.selectbox, st.select_slider.
     """
 
     def new_func(label, options, *args, **kwargs):
+        c = counts[page] if page is not None else counts
         orig_selected = func(label, options, *args, **kwargs)
         label = replace_empty(label)
         selected = replace_empty(orig_selected)
-        if label not in counts["widgets"]:
-            counts["widgets"][label] = {}
+        if label not in c["widgets"]:
+            c["widgets"][label] = {}
         for option in options:
             option = replace_empty(option)
-            if option not in counts["widgets"][label]:
-                counts["widgets"][label][option] = 0
+            if option not in c["widgets"][label]:
+                c["widgets"][label][option] = 0
         if selected != st.session_state.state_dict.get(label, None):
-            counts["widgets"][label][selected] += 1
+            c["widgets"][label][selected] += 1
         st.session_state.state_dict[label] = selected
         return orig_selected
 
     return new_func
 
 
-def _wrap_multiselect(func):
+def _wrap_multiselect(func, page=None):
     """
     Wrap a streamlit function that returns multiple selected elements out of multiple
     options, e.g. st.multiselect.
     """
 
     def new_func(label, options, *args, **kwargs):
+        c = counts[page] if page is not None else counts
         selected = func(label, options, *args, **kwargs)
         label = replace_empty(label)
-        if label not in counts["widgets"]:
-            counts["widgets"][label] = {}
+        if label not in c["widgets"]:
+            c["widgets"][label] = {}
         for option in options:
             option = replace_empty(option)
-            if option not in counts["widgets"][label]:
-                counts["widgets"][label][option] = 0
+            if option not in c["widgets"][label]:
+                c["widgets"][label][option] = 0
         for sel in selected:
             sel = replace_empty(sel)
             if sel not in st.session_state.state_dict.get(label, []):
-                counts["widgets"][label][sel] += 1
+                c["widgets"][label][sel] += 1
         st.session_state.state_dict[label] = selected
         return selected
 
     return new_func
 
 
-def _wrap_value(func):
+def _wrap_value(func, page=None):
     """
     Wrap a streamlit function that returns a single value (str/int/float/datetime/...),
     e.g. st.slider, st.text_input, st.number_input, st.text_area, st.date_input,
@@ -200,9 +206,10 @@ def _wrap_value(func):
     """
 
     def new_func(label, *args, **kwargs):
+        c = counts[page] if page is not None else counts
         value = func(label, *args, **kwargs)
-        if label not in counts["widgets"]:
-            counts["widgets"][label] = {}
+        if label not in c["widgets"]:
+            c["widgets"][label] = {}
 
         formatted_value = replace_empty(value)
         if type(value) == tuple and len(value) == 2:
@@ -217,10 +224,10 @@ def _wrap_value(func):
         ):
             formatted_value = str(value)
 
-        if formatted_value not in counts["widgets"][label]:
-            counts["widgets"][label][formatted_value] = 0
+        if formatted_value not in c["widgets"][label]:
+            c["widgets"][label][formatted_value] = 0
         if formatted_value != st.session_state.state_dict.get(label, None):
-            counts["widgets"][label][formatted_value] += 1
+            c["widgets"][label][formatted_value] += 1
         st.session_state.state_dict[label] = formatted_value
         return value
 
@@ -228,11 +235,12 @@ def _wrap_value(func):
 
 
 def start_tracking(
+    page: str = None,
     verbose: bool = False,
     firestore_key_file: str = None,
-    firestore_collection_name: str = "counts",
+    firestore_collection_name: str = None,
     redis_url: str = None,
-    redis_collection_name: str = "counts",
+    redis_collection_name: str = None,
     load_from_json: Union[str, Path] = None,
 ):
     """
@@ -243,21 +251,30 @@ def start_tracking(
     For a more convenient interface, wrap your streamlit calls in
     `with streamlit_analytics.track():`.
     """
+    if page is not None and page not in counts:
+        counts[page] = {}
+        reset_counts(counts[page])
 
-    if firestore_key_file and not counts["loaded_from_firestore"]:
-        firestore.load(counts, firestore_key_file, firestore_collection_name)
-        counts["loaded_from_firestore"] = True
+    c = counts[page] if page is not None else counts
+    if firestore_collection_name is None:
+        firestore_collection_name = f"counts_{page}" if page is not None else "counts"
+    if redis_collection_name is None:
+        redis_collection_name = f"counts_{page}" if page is not None else "counts"
+
+    if firestore_key_file and not c["loaded_from_firestore"]:
+        firestore.load(c, firestore_key_file, firestore_collection_name)
+        c["loaded_from_firestore"] = True
         if verbose:
             print("Loaded count data from firestore:")
-            print(counts)
+            print(c)
             print()
 
-    if redis_url and not counts["loaded_from_redis"]:
-        redis.load(counts, redis_url, redis_collection_name)
-        counts["loaded_from_redis"] = True
+    if redis_url and not c["loaded_from_redis"]:
+        redis.load(c, redis_url, redis_collection_name)
+        c["loaded_from_redis"] = True
         if verbose:
             print("Loaded count data from redis:")
-            print(counts)
+            print(c)
             print()
 
     if load_from_json is not None:
@@ -267,11 +284,11 @@ def start_tracking(
             with Path(load_from_json).open("r") as f:
                 json_counts = json.load(f)
                 for key in json_counts:
-                    if key in counts:
-                        counts[key] = json_counts[key]
+                    if key in c:
+                        c[key] = json_counts[key]
             if verbose:
                 print("Success! Loaded counts:")
-                print(counts)
+                print(c)
                 print()
         except FileNotFoundError as e:
             if verbose:
@@ -280,42 +297,42 @@ def start_tracking(
     # Reset session state.
     if "user_tracked" not in st.session_state:
         st.session_state.user_tracked = False
-    if "state_dic" not in st.session_state:
+    if "state_dict" not in st.session_state:
         st.session_state.state_dict = {}
     if "last_time" not in st.session_state:
         st.session_state.last_time = datetime.datetime.now()
     _track_user()
 
     # Monkey-patch streamlit to call the wrappers above.
-    st.button = _wrap_button(_orig_button)
-    st.checkbox = _wrap_checkbox(_orig_checkbox)
-    st.radio = _wrap_select(_orig_radio)
-    st.selectbox = _wrap_select(_orig_selectbox)
-    st.multiselect = _wrap_multiselect(_orig_multiselect)
-    st.slider = _wrap_value(_orig_slider)
-    st.select_slider = _wrap_select(_orig_select_slider)
-    st.text_input = _wrap_value(_orig_text_input)
-    st.number_input = _wrap_value(_orig_number_input)
-    st.text_area = _wrap_value(_orig_text_area)
-    st.date_input = _wrap_value(_orig_date_input)
-    st.time_input = _wrap_value(_orig_time_input)
-    st.file_uploader = _wrap_file_uploader(_orig_file_uploader)
-    st.color_picker = _wrap_value(_orig_color_picker)
+    st.button = _wrap_button(_orig_button, page=page)
+    st.checkbox = _wrap_checkbox(_orig_checkbox, page=page)
+    st.radio = _wrap_select(_orig_radio, page=page)
+    st.selectbox = _wrap_select(_orig_selectbox, page=page)
+    st.multiselect = _wrap_multiselect(_orig_multiselect, page=page)
+    st.slider = _wrap_value(_orig_slider, page=page)
+    st.select_slider = _wrap_select(_orig_select_slider, page=page)
+    st.text_input = _wrap_value(_orig_text_input, page=page)
+    st.number_input = _wrap_value(_orig_number_input, page=page)
+    st.text_area = _wrap_value(_orig_text_area, page=page)
+    st.date_input = _wrap_value(_orig_date_input, page=page)
+    st.time_input = _wrap_value(_orig_time_input, page=page)
+    st.file_uploader = _wrap_file_uploader(_orig_file_uploader, page=page)
+    st.color_picker = _wrap_value(_orig_color_picker, page=page)
 
-    st.sidebar.button = _wrap_button(_orig_sidebar_button)
-    st.sidebar.checkbox = _wrap_checkbox(_orig_sidebar_checkbox)
-    st.sidebar.radio = _wrap_select(_orig_sidebar_radio)
-    st.sidebar.selectbox = _wrap_select(_orig_sidebar_selectbox)
-    st.sidebar.multiselect = _wrap_multiselect(_orig_sidebar_multiselect)
-    st.sidebar.slider = _wrap_value(_orig_sidebar_slider)
-    st.sidebar.select_slider = _wrap_select(_orig_sidebar_select_slider)
-    st.sidebar.text_input = _wrap_value(_orig_sidebar_text_input)
-    st.sidebar.number_input = _wrap_value(_orig_sidebar_number_input)
-    st.sidebar.text_area = _wrap_value(_orig_sidebar_text_area)
-    st.sidebar.date_input = _wrap_value(_orig_sidebar_date_input)
-    st.sidebar.time_input = _wrap_value(_orig_sidebar_time_input)
-    st.sidebar.file_uploader = _wrap_file_uploader(_orig_sidebar_file_uploader)
-    st.sidebar.color_picker = _wrap_value(_orig_sidebar_color_picker)
+    st.sidebar.button = _wrap_button(_orig_sidebar_button, page=page)
+    st.sidebar.checkbox = _wrap_checkbox(_orig_sidebar_checkbox, page=page)
+    st.sidebar.radio = _wrap_select(_orig_sidebar_radio, page=page)
+    st.sidebar.selectbox = _wrap_select(_orig_sidebar_selectbox, page=page)
+    st.sidebar.multiselect = _wrap_multiselect(_orig_sidebar_multiselect, page=page)
+    st.sidebar.slider = _wrap_value(_orig_sidebar_slider, page=page)
+    st.sidebar.select_slider = _wrap_select(_orig_sidebar_select_slider, page=page)
+    st.sidebar.text_input = _wrap_value(_orig_sidebar_text_input, page=page)
+    st.sidebar.number_input = _wrap_value(_orig_sidebar_number_input, page=page)
+    st.sidebar.text_area = _wrap_value(_orig_sidebar_text_area, page=page)
+    st.sidebar.date_input = _wrap_value(_orig_sidebar_date_input, page=page)
+    st.sidebar.time_input = _wrap_value(_orig_sidebar_time_input, page=page)
+    st.sidebar.file_uploader = _wrap_file_uploader(_orig_sidebar_file_uploader, page=page)
+    st.sidebar.color_picker = _wrap_value(_orig_sidebar_color_picker, page=page)
 
     # replacements = {
     #     "button": _wrap_bool,
@@ -340,12 +357,13 @@ def start_tracking(
 
 
 def stop_tracking(
+    page: str = None,
     unsafe_password: str = None,
     save_to_json: Union[str, Path] = None,
     firestore_key_file: str = None,
-    firestore_collection_name: str = "counts",
+    firestore_collection_name: str = None,
     redis_url: str = None,
-    redis_collection_name: str = "counts",
+    redis_collection_name: str = None,
     verbose: bool = False,
 ):
     """
@@ -354,9 +372,18 @@ def stop_tracking(
     Should be called after `streamlit-analytics.start_tracking()`. This method also
     shows the analytics results below your app if you attach `?analytics=on` to the URL.
     """
+    if page is not None and page not in counts:
+        counts[page] = {}
+        reset_counts(counts[page])
+    c = counts[page] if page is not None else counts
+    if firestore_collection_name is None:
+        firestore_collection_name = f"counts_{page}" if page is not None else "counts"
+    if redis_collection_name is None:
+        redis_collection_name = f"counts_{page}" if page is not None else "counts"
+
     if verbose:
         print("Finished script execution. New counts:")
-        print(counts)
+        print(c)
         print("-" * 80)
 
     # sess = get_session_state
@@ -399,22 +426,22 @@ def stop_tracking(
     if firestore_key_file:
         if verbose:
             print("Saving count data to firestore:")
-            print(counts)
+            print(c)
             print()
-        firestore.save(counts, firestore_key_file, firestore_collection_name)
+        firestore.save(c, firestore_key_file, firestore_collection_name)
 
     if redis_url:
         if verbose:
             print("Saving count data to redis")
-            print(counts)
+            print(c)
             print()
-        redis.save(counts, redis_url, redis_collection_name)
+        redis.save(c, redis_url, redis_collection_name)
 
     # Dump the counts to json file if `save_to_json` is set.
     # TODO: Make sure this is not locked if writing from multiple threads.
     if save_to_json is not None:
         with Path(save_to_json).open("w") as f:
-            json.dump(counts, f)
+            json.dump(c, f)
         if verbose:
             print("Storing results to file:", save_to_json)
 
@@ -422,7 +449,7 @@ def stop_tracking(
     query_params = st.experimental_get_query_params()
     if "analytics" in query_params and "on" in query_params["analytics"]:
         st.write("---")
-        display.show_results(counts, reset_counts, unsafe_password)
+        display.show_results(c, reset_counts, unsafe_password)
 
 
 @contextmanager
@@ -430,9 +457,9 @@ def track(
     unsafe_password: str = None,
     save_to_json: Union[str, Path] = None,
     firestore_key_file: str = None,
-    firestore_collection_name: str = "counts",
+    firestore_collection_name: str = None,
     redis_url: str = None,
-    redis_collection_name: str = "counts",
+    redis_collection_name: str = None,
     verbose=False,
     load_from_json: Union[str, Path] = None,
 ):

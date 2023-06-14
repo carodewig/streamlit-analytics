@@ -25,9 +25,7 @@ def show_results(counts, reset_callback, unsafe_password=None):
     # Ask for password if one was given.
     show = True
     if unsafe_password is not None:
-        password_input = st.text_input(
-            "Enter password to show results", type="password"
-        )
+        password_input = st.text_input("Enter password to show results", type="password")
         if password_input != unsafe_password:
             show = False
             if len(password_input) > 0:
@@ -61,9 +59,7 @@ def show_results(counts, reset_callback, unsafe_password=None):
         except:
             pass  # probably old Streamlit version
         df = pd.DataFrame(counts["per_day"])
-        base = alt.Chart(df).encode(
-            x=alt.X("monthdate(days):O", axis=alt.Axis(title="", grid=True))
-        )
+        base = alt.Chart(df).encode(x=alt.X("monthdate(days):O", axis=alt.Axis(title="", grid=True)))
         line1 = base.mark_line(point=True, stroke="#5276A7").encode(
             alt.Y(
                 "pageviews:Q",

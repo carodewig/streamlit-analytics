@@ -16,4 +16,8 @@ def load(counts, redis_url, collection_name):
 
 def save(counts, redis_url, collection_name):
     """Save count data from `counts` to redis."""
+    try:
+        json.dumps(counts)
+    except Exception:
+        print(counts)
     redis.Redis.from_url(redis_url).set(collection_name, json.dumps(counts))
