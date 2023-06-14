@@ -261,7 +261,7 @@ def start_tracking(
     if redis_collection_name is None:
         redis_collection_name = f"counts_{page}" if page is not None else "counts"
 
-    if firestore_key_file and not c["loaded_from_firestore"]:
+    if firestore_key_file and not c.get("loaded_from_firestore", False):
         firestore.load(c, firestore_key_file, firestore_collection_name)
         c["loaded_from_firestore"] = True
         if verbose:
@@ -269,7 +269,7 @@ def start_tracking(
             print(c)
             print()
 
-    if redis_url and not c["loaded_from_redis"]:
+    if redis_url and not c.get("loaded_from_redis", False):
         redis.load(c, redis_url, redis_collection_name)
         c["loaded_from_redis"] = True
         if verbose:
