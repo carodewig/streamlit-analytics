@@ -7,7 +7,7 @@ import json
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Union
-
+from collections import defaultdict
 import streamlit as st
 
 from . import display
@@ -147,7 +147,7 @@ def _wrap_file_uploader(func, page=None):
     return new_func
 
 
-def _wrap_select(func, page=None):
+def _wrap_select(func, page=None, selected_only=False):
     """
     Wrap a streamlit function that returns one selected element out of multiple options,
     e.g. st.radio, st.selectbox, st.select_slider.
@@ -159,20 +159,21 @@ def _wrap_select(func, page=None):
         label = replace_empty(label)
         selected = replace_empty(orig_selected)
         if label not in c["widgets"]:
-            c["widgets"][label] = {}
-        for option in options:
-            option = replace_empty(option)
-            if option not in c["widgets"][label]:
-                c["widgets"][label][option] = 0
+            c["widgets"][label] = defaultdict(int)
+        if not selected_only:
+            for option in options:
+                option = replace_empty(option)
+                if option not in c["widgets"][label]:
+                    c["widgets"][label][option] = 0
         if selected != st.session_state.state_dict.get(label, None):
             c["widgets"][label][selected] += 1
-        st.session_state.state_dict[label] = selected
+            st.session_state.state_dict[label] = selected
         return orig_selected
 
     return new_func
 
 
-def _wrap_multiselect(func, page=None):
+def _wrap_multiselect(func, page=None, selected_only=False):
     """
     Wrap a streamlit function that returns multiple selected elements out of multiple
     options, e.g. st.multiselect.
@@ -183,11 +184,12 @@ def _wrap_multiselect(func, page=None):
         selected = func(label, options, *args, **kwargs)
         label = replace_empty(label)
         if label not in c["widgets"]:
-            c["widgets"][label] = {}
-        for option in options:
-            option = replace_empty(option)
-            if option not in c["widgets"][label]:
-                c["widgets"][label][option] = 0
+            c["widgets"][label] = defaultdict(int)
+        if not selected_only:
+            for option in options:
+                option = replace_empty(option)
+                if option not in c["widgets"][label]:
+                    c["widgets"][label][option] = 0
         for sel in selected:
             sel = replace_empty(sel)
             if sel not in st.session_state.state_dict.get(label, []):
@@ -242,6 +244,7 @@ def start_tracking(
     redis_url: str = None,
     redis_collection_name: str = None,
     load_from_json: Union[str, Path] = None,
+    selected_only: bool = False,
 ):
     """
     Start tracking user inputs to a streamlit app.
@@ -306,11 +309,11 @@ def start_tracking(
     # Monkey-patch streamlit to call the wrappers above.
     st.button = _wrap_button(_orig_button, page=page)
     st.checkbox = _wrap_checkbox(_orig_checkbox, page=page)
-    st.radio = _wrap_select(_orig_radio, page=page)
-    st.selectbox = _wrap_select(_orig_selectbox, page=page)
-    st.multiselect = _wrap_multiselect(_orig_multiselect, page=page)
+    st.radio = _wrap_select(_orig_radio, page=page, selected_only=selected_only)
+    st.selectbox = _wrap_select(_orig_selectbox, page=page, selected_only=selected_only)
+    st.multiselect = _wrap_multiselect(_orig_multiselect, page=page, selected_only=selected_only)
     st.slider = _wrap_value(_orig_slider, page=page)
-    st.select_slider = _wrap_select(_orig_select_slider, page=page)
+    st.select_slider = _wrap_select(_orig_select_slider, page=page, selected_only=selected_only)
     st.text_input = _wrap_value(_orig_text_input, page=page)
     st.number_input = _wrap_value(_orig_number_input, page=page)
     st.text_area = _wrap_value(_orig_text_area, page=page)
@@ -321,11 +324,15 @@ def start_tracking(
 
     st.sidebar.button = _wrap_button(_orig_sidebar_button, page=page)
     st.sidebar.checkbox = _wrap_checkbox(_orig_sidebar_checkbox, page=page)
-    st.sidebar.radio = _wrap_select(_orig_sidebar_radio, page=page)
-    st.sidebar.selectbox = _wrap_select(_orig_sidebar_selectbox, page=page)
-    st.sidebar.multiselect = _wrap_multiselect(_orig_sidebar_multiselect, page=page)
+    st.sidebar.radio = _wrap_select(_orig_sidebar_radio, page=page, selected_only=selected_only)
+    st.sidebar.selectbox = _wrap_select(_orig_sidebar_selectbox, page=page, selected_only=selected_only)
+    st.sidebar.multiselect = _wrap_multiselect(
+        _orig_sidebar_multiselect, page=page, selected_only=selected_only
+    )
     st.sidebar.slider = _wrap_value(_orig_sidebar_slider, page=page)
-    st.sidebar.select_slider = _wrap_select(_orig_sidebar_select_slider, page=page)
+    st.sidebar.select_slider = _wrap_select(
+        _orig_sidebar_select_slider, page=page, selected_only=selected_only
+    )
     st.sidebar.text_input = _wrap_value(_orig_sidebar_text_input, page=page)
     st.sidebar.number_input = _wrap_value(_orig_sidebar_number_input, page=page)
     st.sidebar.text_area = _wrap_value(_orig_sidebar_text_area, page=page)
@@ -333,23 +340,6 @@ def start_tracking(
     st.sidebar.time_input = _wrap_value(_orig_sidebar_time_input, page=page)
     st.sidebar.file_uploader = _wrap_file_uploader(_orig_sidebar_file_uploader, page=page)
     st.sidebar.color_picker = _wrap_value(_orig_sidebar_color_picker, page=page)
-
-    # replacements = {
-    #     "button": _wrap_bool,
-    #     "checkbox": _wrap_bool,
-    #     "radio": _wrap_select,
-    #     "selectbox": _wrap_select,
-    #     "multiselect": _wrap_multiselect,
-    #     "slider": _wrap_value,
-    #     "select_slider": _wrap_select,
-    #     "text_input": _wrap_value,
-    #     "number_input": _wrap_value,
-    #     "text_area": _wrap_value,
-    #     "date_input": _wrap_value,
-    #     "time_input": _wrap_value,
-    #     "file_uploader": _wrap_file_uploader,
-    #     "color_picker": _wrap_value,
-    # }
 
     if verbose:
         print()
@@ -462,6 +452,7 @@ def track(
     redis_collection_name: str = None,
     verbose=False,
     load_from_json: Union[str, Path] = None,
+    selected_only: bool = False,
 ):
     """
     Context manager to start and stop tracking user inputs to a streamlit app.
@@ -478,6 +469,7 @@ def track(
         redis_url=redis_url,
         redis_collection_name=redis_collection_name,
         load_from_json=load_from_json,
+        selected_only=selected_only,
     )
 
     # Yield here to execute the code in the with statement. This will call the wrappers
