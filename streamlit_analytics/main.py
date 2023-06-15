@@ -262,7 +262,7 @@ def start_tracking(
     if firestore_collection_name is None:
         firestore_collection_name = f"counts_{page}" if page is not None else "counts"
     if redis_collection_name is None:
-        redis_collection_name = f"counts_{page}" if page is not None else "counts"
+        redis_collection_name = f"analytics:{page}" if page is not None else "analytics:all"
 
     if firestore_key_file and not c.get("loaded_from_firestore", False):
         firestore.load(c, firestore_key_file, firestore_collection_name)
